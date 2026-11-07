@@ -302,7 +302,7 @@
 </div>
 
 <script>
-/* ---------- 인앱 브라우저 감지 (카톡·인스타·네이버 등은 blob 다운로드가 막혀 "파일 형식" 오류가 남) ---------- */
+/* ---------- 인앱 브라우저 감지 ---------- */
 (function(){
   const ua=navigator.userAgent||"";
   if(!/KAKAOTALK|Instagram|FBAN|FBAV|NAVER\(inapp|Line\/|DaumApps|everytimeApp|BAND\/|; wv\)/i.test(ua)) return;
@@ -315,7 +315,7 @@
 
 /* ---------- 규격 ---------- */
 const PRESETS = {
-  mini:   {w:180,h:180,bg:null},      // 카카오 미니 이모티콘: 180x180 투명, WebP≤2MB, ≤24프레임
+  mini:   {w:180,h:180,bg:null},
   kakao:  {w:360,h:360,bg:"#ffffff"},
   ogq:    {w:740,h:640,bg:null},
   square: {w:360,h:360,bg:null},
@@ -327,7 +327,7 @@ const elastic=t=>{ if(t<=0)return 0; if(t>=1)return 1; const p=.3;
   return Math.pow(2,-10*t)*Math.sin((t-p/4)*(2*Math.PI)/p)+1; };
 const back=t=>{ const c1=1.70158,c3=c1+1; return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2); };
 
-/* 큼직한 4각 반짝이 (파티클) — 작은 화면에서도 잘 보이게 크게 */
+/* 큼직한 4각 반짝이 (파티클) */
 function drawSparkle(ctx,x,y,r,rotDeg,alpha){
   ctx.save(); ctx.translate(x,y); ctx.rotate(rotDeg*Math.PI/180); ctx.globalAlpha=alpha;
   const ro=r, ri=r*0.34; ctx.beginPath();
@@ -362,8 +362,15 @@ const MOTIONS = {
         drawSparkle(ctx,q[0]*spec.w,q[1]*spec.h,Math.min(spec.w,spec.h)*.13*s, pp*120, Math.min(1,s)); }); }},
 };
 
+/* 각 모션의 기본 중심 높이 (그림 영역 정중앙 배치용 기준값) */
+const BASE_CY = {
+  sway:0.60, twinkle:0.50, drop:0.52, ring:0.46, bounce:0.68, boing:0.50,
+  popin:0.50, wiggle:0.50, beat:0.50, float:0.50, spin:0.50, tilt:0.50,
+  nod:0.53, jelly:0.50, zoom:0.50, slide:0.50, roll:0.60, cheer:0.50
+};
+
 /* ---------- 상태 ---------- */
-let icons=[]; // {name, img, bmp(cropped canvas), motion}
+let icons=[];
 let sel=-1, t0=performance.now();
 const NVAR=6, HOLD=2;
 const $=id=>document.getElementById(id);
@@ -384,7 +391,7 @@ function cropToContent(img){
   const o=document.createElement("canvas"); o.width=cw; o.height=ch;
   o.getContext("2d").drawImage(c,minX,minY,cw,ch,0,0,cw,ch); return o;
 }
-/* ---------- 흰 배경 제거 (테두리 플러드필: 내부 흰색은 보존) ---------- */
+/* ---------- 흰 배경 제거 ---------- */
 let RMBG_ON=false;
 function removeWhiteBg(src,tol){
   tol=tol||30; const w=src.width,h=src.height;
@@ -431,7 +438,6 @@ function addFiles(list){
     img.onload=()=>{
       const raw=document.createElement("canvas"); raw.width=img.width; raw.height=img.height;
       raw.getContext("2d").drawImage(img,0,0);
-      // JPG 등 투명도 없는 파일은 흰 배경 제거를 자동으로 켬
       const ic={name:f.name.replace(/\.(png|jpe?g|webp|gif)$/i,""),motion:$("motion").value,_raw:raw,rmbg:isPng?RMBG_ON:true,border:(+$("border").value||3)};
       processIcon(ic); icons.push(ic);
       URL.revokeObjectURL(url); if(sel<0)sel=0; renderThumbs(); };
@@ -445,8 +451,8 @@ function addFiles(list){
 let PREVIEW_BG="white";
 let SHOW_GUIDES=true;
 let editTarget="image";
-const textState={motion:"beat", font:"omyu_pretty", mi:1, posx:0, posy:0};   // 텍스트 레이어 상태
-const imgState={mi:1, posx:0, posy:0};   // 그림 레이어 상태
+const textState={motion:"beat", font:"omyu_pretty", mi:1, posx:0, posy:0};
+const imgState={mi:1, posx:0, posy:0};
 function curState(){ return editTarget==="text" ? textState : imgState; }
 let TEXT_COLOR="#755139";
 
@@ -456,26 +462,25 @@ const PVBG={white:"#ffffff", transparent:"conic-gradient(#00000008 25%,#0000 0 5
 function applyPvBg(){ const st=document.querySelector(".stage"); if(st) st.style.background=PVBG[PREVIEW_BG]||PVBG.white; }
 $("pvbg")&&($("pvbg").onclick=e=>{ if(!e.target.dataset.bg)return; [...$("pvbg").children].forEach(x=>x.classList.remove("on")); e.target.classList.add("on"); PREVIEW_BG=e.target.dataset.bg; applyPvBg(); });
 applyPvBg();
-/* 흰 배경 제거 토글 (선택 아이콘에 적용) */
+
 $("rmbg")&&($("rmbg").onclick=()=>{ const rb=$("rmbg");
   if(sel<0||!icons[sel]){ rb.classList.toggle("on"); RMBG_ON=rb.classList.contains("on"); return; }
   const ic=icons[sel]; const on=rb.classList.toggle("on"); RMBG_ON=on; ic.rmbg=on;
   processIcon(ic);
   t0=performance.now(); renderThumbs(); });
 
-/* ---------- 보일(손그림 흔들림): 변형별 미세 affine ---------- */
-function variantXform(seed,k){ // deterministic pseudo-random, k=라인보일 강도
+/* ---------- 보일(손그림 흔들림) ---------- */
+function variantXform(seed,k){
   const r=(n)=>{const x=Math.sin(seed*97.13+n*41.7)*43758.5453; return (x-Math.floor(x))*2-1;};
   return {ang:r(1)*0.9*k, sx:1+r(2)*.012*k, sy:1+r(3)*.012*k,
           dx:r(4)*0.9*k, dy:r(5)*0.9*k, kx:r(6)*.010*k, ky:r(7)*.010*k};
 }
 
 /* ---------- 한 프레임 그리기 ---------- */
-/* 라인보일: 삼각형 텍스처 매핑으로 외곽선을 부분부분 왜곡(진짜 메시 워프) */
 function warpRand(seed,i,j,c){ const x=Math.sin(seed*131.1+i*37.7+j*53.3+c*11.13)*43758.5453; return (x-Math.floor(x))*2-1; }
 function drawTri(ctx,img,s0,s1,s2,d0,d1,d2){
   ctx.save();
-  const mx=(d0.x+d1.x+d2.x)/3,my=(d0.y+d1.y+d2.y)/3,k=1.04; // 살짝 확장으로 이음새 방지
+  const mx=(d0.x+d1.x+d2.x)/3,my=(d0.y+d1.y+d2.y)/3,k=1.04;
   ctx.beginPath();
   ctx.moveTo(mx+(d0.x-mx)*k,my+(d0.y-my)*k);
   ctx.lineTo(mx+(d1.x-mx)*k,my+(d1.y-my)*k);
@@ -494,7 +499,7 @@ function drawSpriteWarped(ctx,bmp,ox,oy,bw,bh,amp,seed){
   if(amp<=0){ ctx.drawImage(bmp,ox,oy,bw,bh); return; }
   const g=5, iw=bmp.width, ih=bmp.height, cw=iw/g, ch=ih/g, V=[];
   for(let j=0;j<=g;j++){ V[j]=[]; for(let i=0;i<=g;i++){
-    const edge=(i===0||j===0||i===g||j===g)?0.4:1; // 가장자리는 덜 흔들어 잘림 방지
+    const edge=(i===0||j===0||i===g||j===g)?0.4:1;
     V[j][i]={x:ox+(i/g)*bw+warpRand(seed,i,j,1)*amp*edge, y:oy+(j/g)*bh+warpRand(seed,i,j,2)*amp*edge};
   }}
   for(let j=0;j<g;j++)for(let i=0;i<g;i++){
@@ -551,8 +556,11 @@ function drawFrame(ctx, spec, icon, p, boil, frameIdx){
   const bmp=icon.bmp;
   const base=(fit*Math.min(spec.w,spec.h))/Math.max(bmp.width,bmp.height);
   const bw=bmp.width*base*m.sx, bh=bmp.height*base*m.sy;
-  const textOn=($("txt")&&$("txt").value.trim()!=="");
-  const cx=m.cx*spec.w+offX, cy=m.cy*spec.h+offY + spec.h*0.08; /* 항상 그림영역 기준 */
+  const baseH=bmp.height*base;
+  const bcy=BASE_CY[icon.motion]||0.5;
+  /* 그림 영역(세로 0.34~0.96, 정중앙 0.65) 한가운데에 캐릭터 중심이 오도록 피벗(py)과 기준 높이(bcy) 보정 */
+  const cx=m.cx*spec.w+offX;
+  const cy=(0.65 + (m.cy - bcy))*spec.h + (m.py - 0.5)*baseH + offY;
   ctx.save();
   ctx.globalAlpha=m.a;
   ctx.translate(cx,cy);
@@ -571,14 +579,12 @@ function loop(){
   requestAnimationFrame(loop);
   if(sel<0||!icons[sel])return;
   const spec=PRESETS[preset];
-  // 미리보기는 300 정사각에 맞춰 축소
   const scale=Math.min(300/spec.w,300/spec.h);
   pv.width=Math.round(spec.w*scale); pv.height=Math.round(spec.h*scale);
   const fps=+$("fps").value, frames=+$("frames").value;
   const dur=frames/fps*1000;
   const p=((performance.now()-t0)%dur)/dur;
   const fi=Math.floor(p*frames);
-  // 임시 풀사이즈 캔버스에 그린 뒤 축소
   const tmp=document.createElement("canvas"); tmp.width=spec.w; tmp.height=spec.h;
   drawFrame(tmp.getContext("2d"), spec, icons[sel], fi/frames, +$("boil").value, fi);
   pctx.clearRect(0,0,pv.width,pv.height);
@@ -626,7 +632,6 @@ async function exportGif(icon){
   for(let i=0;i<frames;i++){
     const c=document.createElement("canvas"); c.width=spec.w; c.height=spec.h; const ctx=c.getContext("2d");
     drawFrame(ctx,spec,icon,i/frames,+$("boil").value,i);
-    // GIF 투명 저장: 알파를 1비트로 (반투명->키컬러=투명, 불투명->원색 유지)
     const im=ctx.getImageData(0,0,spec.w,spec.h), d=im.data;
     for(let p=0;p<d.length;p+=4){
       if(d[p+3]<128){ d[p]=0xFF; d[p+1]=0x00; d[p+2]=0xFF; d[p+3]=255; }
@@ -638,10 +643,10 @@ async function exportGif(icon){
   return new Promise(res=>{ gif.on("finished",b=>res(b)); gif.render(); });
 }
 
-/* ---------- WebP (정지 프레임 -> 애니메이션 컨테이너 mux, WASM 불필요) ---------- */
+/* ---------- WebP ---------- */
 const u24=n=>[n&255,(n>>8)&255,(n>>16)&255];
 function chunkList(buf){
-  const d=new Uint8Array(buf), out=[]; let p=12; // RIFF(4)+size(4)+WEBP(4)
+  const d=new Uint8Array(buf), out=[]; let p=12;
   while(p+8<=d.length){
     const fourcc=String.fromCharCode(d[p],d[p+1],d[p+2],d[p+3]);
     const size=d[p+4]|(d[p+5]<<8)|(d[p+6]<<16)|(d[p+7]<<24);
@@ -668,7 +673,7 @@ async function exportWebp(icon){
     per.push({img,alph});
   }
   const vp8x=new Uint8Array([0x02|(hasAlpha?0x10:0),0,0,0, ...u24(spec.w-1), ...u24(spec.h-1)]);
-  const anim=new Uint8Array([0,0,0,0, 0,0]); // 배경 투명, 무한 루프
+  const anim=new Uint8Array([0,0,0,0, 0,0]);
   const parts=[encChunk("VP8X",vp8x), encChunk("ANIM",anim)];
   for(const f of per){
     const fc=[]; if(f.alph)fc.push(encChunk("ALPH",f.alph.payload)); fc.push(encChunk(f.img.fourcc,f.img.payload));
@@ -680,9 +685,9 @@ async function exportWebp(icon){
   }
   let bodyLen=4; parts.forEach(p=>bodyLen+=p.length);
   const riff=new Uint8Array(8+bodyLen);
-  riff.set([82,73,70,70],0); // RIFF
+  riff.set([82,73,70,70],0);
   riff[4]=bodyLen&255;riff[5]=(bodyLen>>8)&255;riff[6]=(bodyLen>>16)&255;riff[7]=(bodyLen>>24)&255;
-  riff.set([87,69,66,80],8); // WEBP
+  riff.set([87,69,66,80],8);
   let off=12; parts.forEach(p=>{riff.set(p,off);off+=p.length;});
   return new Blob([riff],{type:"image/webp"});
 }
@@ -730,7 +735,7 @@ drop.ondragleave=()=>drop.classList.remove("hot");
 drop.ondrop=e=>{e.preventDefault();drop.classList.remove("hot");addFiles(e.dataTransfer.files);};
 
 /* ---------- 모션 카드 갤러리 (예시 클릭 → 즉시 적용) ---------- */
-const SAMPLE_MOTIONS=["sway","beat","boing","twinkle","bounce","nod"]; // 노출할 6종 샘플
+const SAMPLE_MOTIONS=["sway","beat","boing","twinkle","bounce","nod"];
 let galleryCards=[];
 
 /* 데모용 아이콘 — 잘리지 않은 온전한 봄테일 캐릭터 데이터 */
@@ -762,16 +767,20 @@ window.DEMO_SRC = DEMO_SRC;
 let DEMO_BMP=document.createElement("canvas"); DEMO_BMP.width=DEMO_BMP.height=8;
 (function(){ const img=new Image(); img.onload=()=>{ DEMO_BMP=cropToContent(img); }; img.src=DEMO_SRC; })();
 
-/* 카드 한 칸 렌더 (슬라이더와 무관하게 고정 강도로 또렷하게) */
+/* 카드 한 칸 렌더 (모션 카드 안에서도 정중앙에 오도록 보정) */
 function drawMotionDemo(ctx,key,p,size,bmp){
   ctx.clearRect(0,0,size,size);
-  const savedMI=MI; MI=1;                   // 데모는 항상 100% 강도
+  const savedMI=MI; MI=1;
   const m=MOTIONS[key].f(p);
   MI=savedMI;
-  const base=(0.5*size)/Math.max(bmp.width,bmp.height);
+  const base=(0.55*size)/Math.max(bmp.width,bmp.height);
   const bw=bmp.width*base*m.sx, bh=bmp.height*base*m.sy;
+  const baseH=bmp.height*base;
+  const bcy=BASE_CY[key]||0.5;
+  const cx=m.cx*size;
+  const cy=(0.5 + (m.cy - bcy)*0.55)*size + (m.py - 0.5)*baseH;
   ctx.save(); ctx.globalAlpha=m.a;
-  ctx.translate(m.cx*size,m.cy*size); ctx.rotate(m.ang*Math.PI/180);
+  ctx.translate(cx,cy); ctx.rotate(m.ang*Math.PI/180);
   ctx.imageSmoothingQuality="high";
   ctx.drawImage(bmp,-bw*m.px,-bh*m.py,bw,bh);
   ctx.restore();
@@ -839,6 +848,19 @@ buildGallery(); galleryLoop();
   };
   img.src=DEMO_SRC;
 })();
+
+/* ---------- 우클릭 및 단축키 방지 ---------- */
+document.addEventListener("contextmenu", e => e.preventDefault());
+document.addEventListener("keydown", e => {
+  if (
+    e.key === "F12" ||
+    (e.ctrlKey && e.shiftKey && ["I", "J", "C", "i", "j", "c"].includes(e.key)) ||
+    (e.ctrlKey && ["U", "S", "u", "s"].includes(e.key)) ||
+    (e.metaKey && e.altKey && ["I", "J", "C", "U", "i", "j", "c", "u"].includes(e.key))
+  ) {
+    e.preventDefault();
+  }
+});
 </script>
 </body>
 </html>
